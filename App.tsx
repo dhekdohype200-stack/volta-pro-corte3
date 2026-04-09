@@ -1878,11 +1878,11 @@ function CheckoutView({ onBack, initialPlan, settings }: { onBack: () => void, i
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-neutral-500 uppercase tracking-widest ml-1">WhatsApp</label>
-                <Input placeholder="(00) 00000-0000" />
+                <Input placeholder="(00) 00000-0000" value={form.wpp} onChange={e => setForm({...form, wpp: e.target.value})} required />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-neutral-500 uppercase tracking-widest ml-1">CPF/CNPJ</label>
-                <Input placeholder="000.000.000-00" />
+                <Input placeholder="000.000.000-00" value={form.cpf} onChange={e => setForm({...form, cpf: e.target.value})} required />
               </div>
 
               <div className="pt-6 space-y-4">
