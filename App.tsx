@@ -51,7 +51,7 @@ import {
   AreaChart, 
   Area 
 } from 'recharts';
-import { format, isToday, parseISO, differenceInDays } from 'date-fns';
+import { format, isToday, parseISO, differenceInDays, subDays, isSameDay, eachDayOfInterval, startOfDay, isWithinInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Toaster, toast } from 'sonner';
 import { cn } from './lib/utils';
@@ -205,15 +205,28 @@ export default function App() {
     prevAppointmentsCount.current = appointments.length;
   }, [appointments]);
 
-  const chartData = [
-    { name: 'Seg', revenue: 400, recovered: 2 },
-    { name: 'Ter', revenue: 300, recovered: 1 },
-    { name: 'Qua', revenue: 600, recovered: 3 },
-    { name: 'Qui', revenue: 800, recovered: 4 },
-    { name: 'Sex', revenue: 1200, recovered: 6 },
-    { name: 'Sáb', revenue: 1500, recovered: 8 },
-    { name: 'Dom', revenue: 200, recovered: 1 },
-  ];
+  const last7Days = useMemo(() => {
+    const end = startOfDay(new Date());
+    const start = subDays(end, 6);
+    return eachDayOfInterval({ start, end });
+  }, []);
+
+  const chartData = useMemo(() => {
+    return last7Days.map(day => {
+      const dayAppointments = appointments.filter(a => 
+        a.status === 'completed' && isSameDay(parseISO(a.date), day)
+      );
+      const dayRecovered = recoveredAppointments.filter(a => 
+        isSameDay(parseISO(a.date), day)
+      );
+      
+      return {
+        name: format(day, 'EEE', { locale: ptBR }).replace('.', ''),
+        revenue: dayAppointments.reduce((acc, curr) => acc + curr.service_price, 0),
+        recovered: dayRecovered.length
+      };
+    });
+  }, [appointments, recoveredAppointments, last7Days]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -308,14 +321,44 @@ export default function App() {
   const newClientsToday = appointments.filter(a => isToday(parseISO(a.created_at || a.date))).length;
   
   // Clientes recuperados são aqueles que fecharam agendamento E já estavam na nossa base prévia de clientes.
-  const recoveredAppointments = appointments.filter(a => 
+  const allRecoveredAppointments = useMemo(() => appointments.filter(a => 
     a.status === 'completed' && 
     clients.some(c => c.phone.replace(/\D/g, '') === a.client_phone.replace(/\D/g, ''))
-  );
+  ), [appointments, clients]);
+
+  const recoveredAppointments = useMemo(() => {
+    const end = startOfDay(new Date());
+    const start = subDays(end, 6);
+    return allRecoveredAppointments.filter(a => 
+      isWithinInterval(parseISO(a.date), { start, end })
+    );
+  }, [allRecoveredAppointments]);
+
   const recoveredThisWeek = recoveredAppointments.length;
   const recoveredRevenue = recoveredAppointments.reduce((acc, curr) => acc + curr.service_price, 0);
 
-  const projectedRevenue = appointments.filter(a => a.status === 'completed').reduce((acc, curr) => acc + curr.service_price, 0);
+  const projectedRevenue = useMemo(() => {
+    const end = startOfDay(new Date());
+    const start = subDays(end, 6);
+    return appointments.filter(a => 
+      a.status === 'completed' && isWithinInterval(parseISO(a.date), { start, end })
+    ).reduce((acc, curr) => acc + curr.service_price, 0);
+  }, [appointments]);
+
+  const lastWeekRange = useMemo(() => {
+    const end = subDays(startOfDay(new Date()), 7);
+    const start = subDays(end, 6);
+    return { start, end };
+  }, []);
+
+  const revenueChange = useMemo(() => {
+    const lastWeekRevenue = appointments.filter(a => 
+      a.status === 'completed' && isWithinInterval(parseISO(a.date), lastWeekRange)
+    ).reduce((acc, curr) => acc + curr.service_price, 0);
+    
+    if (lastWeekRevenue === 0) return projectedRevenue > 0 ? 100 : 0;
+    return ((projectedRevenue - lastWeekRevenue) / lastWeekRevenue) * 100;
+  }, [appointments, projectedRevenue, lastWeekRange]);
 
   if (view === 'booking') {
     return <PublicBooking services={services} onComplete={fetchData} settings={settings} appointments={appointments} />;
@@ -733,7 +776,12 @@ export default function App() {
                       icon={<TrendingUp />} 
                       variant="success"
                     />
-                    <div className="absolute top-2 right-2 text-[8px] font-bold text-emerald-500 bg-emerald-500/10 px-1 py-0.5 rounded">+18%</div>
+                    <div className={cn(
+                      "absolute top-2 right-2 text-[8px] font-bold px-1 py-0.5 rounded",
+                      revenueChange >= 0 ? "text-emerald-500 bg-emerald-500/10" : "text-red-500 bg-red-500/10"
+                    )}>
+                      {revenueChange >= 0 ? '+' : ''}{revenueChange.toFixed(0)}%
+                    </div>
                   </div>
                   <div className="relative group">
                     <MetricCard 
@@ -859,7 +907,7 @@ export default function App() {
                 </div>
 
                 {/* Evolution Chart */}
-                <EvolutionChart data={chartData} />
+                <EvolutionChart data={chartData} percentage={revenueChange} />
               </motion.div>
             )}
 
@@ -2063,13 +2111,18 @@ function SidebarItem({ icon, label, active, onClick }: { icon: React.ReactNode, 
   );
 }
 
-function EvolutionChart({ data }: { data: any[] }) {
+function EvolutionChart({ data, percentage }: { data: any[], percentage: number }) {
   return (
     <div className="saas-card p-4 h-64 w-full">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-xs font-black text-neutral-500 uppercase tracking-widest">Desempenho Semanal</h3>
-          <p className="text-[10px] text-emerald-500 font-bold mt-0.5">+12% em relação à semana passada</p>
+          <p className={cn(
+            "text-[10px] font-bold mt-0.5",
+            percentage >= 0 ? "text-emerald-500" : "text-red-500"
+          )}>
+            {percentage >= 0 ? '+' : ''}{percentage.toFixed(0)}% em relação à semana passada
+          </p>
         </div>
         <div className="flex gap-4 text-[9px] font-bold uppercase tracking-tighter">
           <span className="flex items-center gap-1 text-emerald-500"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Faturamento</span>
