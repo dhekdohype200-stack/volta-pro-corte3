@@ -167,7 +167,7 @@ app.get('/api/inactive-clients', async (_req, res) => {
   }
 
   const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 15);
 
   const inactive = Object.values(map)
     .map((c) => {

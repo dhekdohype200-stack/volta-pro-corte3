@@ -180,7 +180,7 @@ async function startServer() {
     }
 
     const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 15);
 
     const inactive = Object.values(map)
       .map((c) => {

@@ -142,12 +142,13 @@ export default function App() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [inactiveClients, setInactiveClients] = useState<InactiveClient[]>([]);
   const [clients, setClients] = useState<{id: number, name: string, phone: string}[]>([]);
-  const [settings, setSettings] = useState<{business_name: string, business_email: string, start_time: string, end_time: string, business_logo?: string, pix_key?: string}>({
+  const [settings, setSettings] = useState<{business_name: string, business_email: string, start_time: string, end_time: string, business_logo?: string, whatsapp_number?: string, pix_key?: string}>({
     business_name: 'Volta Pro Corte',
     business_email: 'barbearia@premium.com',
     start_time: '08:00',
     end_time: '19:00',
     business_logo: '',
+    whatsapp_number: '',
     pix_key: 'suachave@pix.com'
   });
   const [loading, setLoading] = useState(true);
@@ -447,12 +448,9 @@ export default function App() {
         "md:!translate-x-0"
       )}>
         <div className="flex flex-col h-full p-4">
-          <div className="flex items-center gap-2 mb-6">
-            <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center glow-red">
-              <Scissors className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h1 className="font-black text-base tracking-tighter text-white uppercase leading-none">{settings.business_name}</h1>
+          <div className="flex items-center mb-6">
+            <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center glow-red">
+              <Scissors className="w-6 h-6 text-white" />
             </div>
           </div>
 
@@ -487,12 +485,7 @@ export default function App() {
               active={view === 'pricing'} 
               onClick={() => { setView('pricing'); setSidebarOpen(false); }} 
             />
-            <SidebarItem 
-              icon={<Zap className="w-5 h-5" />} 
-              label="Onboarding" 
-              active={view === 'onboarding'} 
-              onClick={() => { setView('onboarding'); setSidebarOpen(false); }} 
-            />
+
           </nav>
 
           <div className="pt-6 border-t border-neutral-800/50 space-y-2">
@@ -637,8 +630,8 @@ export default function App() {
                 )}
               </AnimatePresence>
 
-              <div className="w-11 h-11 rounded-xl bg-neutral-800 border border-neutral-700 flex items-center justify-center text-sm font-black text-white shadow-lg">
-                BP
+              <div className="w-11 h-11 rounded-xl bg-neutral-800 border border-neutral-700 flex items-center justify-center text-sm font-black text-white shadow-lg uppercase">
+                {user?.user_metadata?.name ? user.user_metadata.name.substring(0, 2) : (user?.email ? user.email.substring(0, 2) : 'BP')}
               </div>
             </div>
           </div>
@@ -722,9 +715,9 @@ export default function App() {
                       </h2>
                       <p className="text-white/90 font-bold text-lg">
                         {inactiveClients.length > 0 ? (
-                          <>Você tem <span className="text-white underline decoration-2 underline-offset-4">{inactiveClients.length} clientes</span> que não voltam há mais de 30 dias.</>
+                          <>Você tem <span className="text-white underline decoration-2 underline-offset-4">{inactiveClients.length} clientes</span> que não voltam há mais de 15 dias.</>
                         ) : (
-                          <>Nenhum cliente sumido nos últimos 30 dias. Continue assim!</>
+                          <>Nenhum cliente sumido nos últimos 15 dias. Continue assim!</>
                         )}
                       </p>
                     </div>
@@ -1122,13 +1115,13 @@ export default function App() {
                             {settings.business_logo ? (
                               <img src={settings.business_logo} alt="Logo" className="w-full h-full object-cover" />
                             ) : (
-                              settings.business_name.charAt(0)
+                              user?.user_metadata?.name ? user.user_metadata.name.charAt(0) : (user?.email ? user.email.charAt(0) : 'B')
                             )}
                           </div>
                         </div>
                         <div>
-                          <h4 className="text-xl font-black text-white">{settings.business_name}</h4>
-                          <p className="text-sm text-neutral-500">{settings.business_email}</p>
+                          <h4 className="text-xl font-black text-white">{user?.user_metadata?.name || settings.business_name}</h4>
+                          <p className="text-sm text-neutral-500">{user?.email || settings.business_email}</p>
                         </div>
                         <ProfileDialog settings={settings} onUpdate={fetchData} />
                       </div>
@@ -2382,7 +2375,7 @@ function ProfileDialog({ settings, onUpdate }: { settings: any, onUpdate: () => 
   const [name, setName] = useState(settings.business_name);
   const [email, setEmail] = useState(settings.business_email);
   const [logo, setLogo] = useState(settings.business_logo || '');
-  const [pixKey, setPixKey] = useState(settings.pix_key || '');
+  const [whatsappNumber, setWhatsappNumber] = useState(settings.whatsapp_number || '');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2402,7 +2395,7 @@ function ProfileDialog({ settings, onUpdate }: { settings: any, onUpdate: () => 
       await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ business_name: name, business_email: email, business_logo: logo, pix_key: pixKey })
+        body: JSON.stringify({ business_name: name, business_email: email, business_logo: logo, whatsapp_number: whatsappNumber })
       });
       onUpdate();
       setOpen(false);
@@ -2457,8 +2450,8 @@ function ProfileDialog({ settings, onUpdate }: { settings: any, onUpdate: () => 
               <Input type="email" value={email} onChange={e => setEmail(e.target.value)} required />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Sua Chave PIX</label>
-              <Input placeholder="E-mail, CPF, Celular ou Aleatória" value={pixKey} onChange={e => setPixKey(e.target.value)} />
+              <label className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Seu Número de WhatsApp</label>
+              <Input placeholder="(11) 99999-9999" value={whatsappNumber} onChange={e => setWhatsappNumber(e.target.value)} />
             </div>
           </div>
 
