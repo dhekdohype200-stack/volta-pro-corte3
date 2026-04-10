@@ -51,11 +51,11 @@ import {
   AreaChart, 
   Area 
 } from 'recharts';
-import { format, isToday, parseISO, differenceInDays, subDays, isSameDay, eachDayOfInterval, startOfDay, isWithinInterval } from 'date-fns';
+import { format, isToday, parseISO, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Toaster, toast } from 'sonner';
 import { cn } from './lib/utils';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from './lib/supabase';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
@@ -137,7 +137,6 @@ const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLI
 // --- Main App ---
 
 export default function App() {
-  console.log('📦 App component: rendering start');
   const [view, setView] = useState<'dashboard' | 'clients' | 'agenda' | 'settings' | 'booking' | 'pricing' | 'checkout' | 'onboarding'>('dashboard');
   const [services, setServices] = useState<Service[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -206,6 +205,15 @@ export default function App() {
     prevAppointmentsCount.current = appointments.length;
   }, [appointments]);
 
+  const chartData = [
+    { name: 'Seg', revenue: 400, recovered: 2 },
+    { name: 'Ter', revenue: 300, recovered: 1 },
+    { name: 'Qua', revenue: 600, recovered: 3 },
+    { name: 'Qui', revenue: 800, recovered: 4 },
+    { name: 'Sex', revenue: 1200, recovered: 6 },
+    { name: 'Sáb', revenue: 1500, recovered: 8 },
+    { name: 'Dom', revenue: 200, recovered: 1 },
+  ];
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -295,130 +303,19 @@ export default function App() {
   };
 
   const totalRecoverable = inactiveClients.reduce((acc, curr) => acc + curr.avg_price, 0);
-  const todayAppointments = appointments.filter(a => {
-    try {
-      const d = parseISO(a.date);
-      return !isNaN(d.getTime()) && isToday(d);
-    } catch {
-      return false;
-    }
-  });
+  const todayAppointments = appointments.filter(a => isToday(parseISO(a.date)));
   const emptySlots = 10 - todayAppointments.length;
-  const newClientsToday = appointments.filter(a => {
-    try {
-      const d = parseISO(a.created_at || a.date);
-      return !isNaN(d.getTime()) && isToday(d);
-    } catch {
-      return false;
-    }
-  }).length;
+  const newClientsToday = appointments.filter(a => isToday(parseISO(a.created_at || a.date))).length;
   
-  console.log('📊 App component: calculating metrics', { appointments: appointments.length, clients: clients.length });
-
   // Clientes recuperados são aqueles que fecharam agendamento E já estavam na nossa base prévia de clientes.
-  const allRecoveredAppointments = useMemo(() => {
-    try {
-      return appointments.filter(a => 
-        a.status === 'completed' && 
-        clients.some(c => (c.phone || '').replace(/\D/g, '') === (a.client_phone || '').replace(/\D/g, ''))
-      );
-    } catch (e) {
-      console.error('❌ Error in allRecoveredAppointments:', e);
-      return [];
-    }
-  }, [appointments, clients]);
-
-  const recoveredAppointments = useMemo(() => {
-    try {
-      const end = startOfDay(new Date());
-      const start = subDays(end, 6);
-      return allRecoveredAppointments.filter(a => {
-        try {
-          const d = parseISO(a.date);
-          return !isNaN(d.getTime()) && isWithinInterval(d, { start, end });
-        } catch {
-          return false;
-        }
-      });
-    } catch (e) {
-      console.error('❌ Error in recoveredAppointments:', e);
-      return [];
-    }
-  }, [allRecoveredAppointments]);
-
+  const recoveredAppointments = appointments.filter(a => 
+    a.status === 'completed' && 
+    clients.some(c => c.phone.replace(/\D/g, '') === a.client_phone.replace(/\D/g, ''))
+  );
   const recoveredThisWeek = recoveredAppointments.length;
-  const recoveredRevenue = recoveredAppointments.reduce((acc, curr) => acc + (Number(curr.service_price) || 0), 0);
+  const recoveredRevenue = recoveredAppointments.reduce((acc, curr) => acc + curr.service_price, 0);
 
-  const projectedRevenue = useMemo(() => {
-    const end = startOfDay(new Date());
-    const start = subDays(end, 6);
-    return appointments.filter(a => {
-      try {
-        const d = parseISO(a.date);
-        return a.status === 'completed' && !isNaN(d.getTime()) && isWithinInterval(d, { start, end });
-      } catch {
-        return false;
-      }
-    }).reduce((acc, curr) => acc + (Number(curr.service_price) || 0), 0);
-  }, [appointments]);
-
-  const last7Days = useMemo(() => {
-    const end = startOfDay(new Date());
-    const start = subDays(end, 6);
-    return eachDayOfInterval({ start, end });
-  }, []);
-
-  const chartData = useMemo(() => {
-    return last7Days.map(day => {
-      const dayAppointments = appointments.filter(a => {
-        try {
-          const d = parseISO(a.date);
-          return a.status === 'completed' && !isNaN(d.getTime()) && isSameDay(d, day);
-        } catch {
-          return false;
-        }
-      });
-      const dayRecovered = recoveredAppointments.filter(a => {
-        try {
-          const d = parseISO(a.date);
-          return !isNaN(d.getTime()) && isSameDay(d, day);
-        } catch {
-          return false;
-        }
-      });
-      
-      return {
-        name: format(day, 'EEE', { locale: ptBR }).replace('.', ''),
-        revenue: dayAppointments.reduce((acc, curr) => acc + (Number(curr.service_price) || 0), 0),
-        recovered: dayRecovered.length
-      };
-    });
-  }, [appointments, recoveredAppointments, last7Days]);
-
-  const lastWeekRange = useMemo(() => {
-    const end = subDays(startOfDay(new Date()), 7);
-    const start = subDays(end, 6);
-    return { start, end };
-  }, []);
-
-  const revenueChange = useMemo(() => {
-    try {
-      const lastWeekRevenue = appointments.filter(a => {
-        try {
-          const d = parseISO(a.date);
-          return a.status === 'completed' && !isNaN(d.getTime()) && isWithinInterval(d, lastWeekRange);
-        } catch {
-          return false;
-        }
-      }).reduce((acc, curr) => acc + (Number(curr.service_price) || 0), 0);
-      
-      if (lastWeekRevenue === 0) return projectedRevenue > 0 ? 100 : 0;
-      const change = ((projectedRevenue - lastWeekRevenue) / lastWeekRevenue) * 100;
-      return isNaN(change) ? 0 : change;
-    } catch {
-      return 0;
-    }
-  }, [appointments, projectedRevenue, lastWeekRange]);
+  const projectedRevenue = appointments.filter(a => a.status === 'completed').reduce((acc, curr) => acc + curr.service_price, 0);
 
   if (view === 'booking') {
     return <PublicBooking services={services} onComplete={fetchData} settings={settings} appointments={appointments} />;
@@ -836,12 +733,7 @@ export default function App() {
                       icon={<TrendingUp />} 
                       variant="success"
                     />
-                    <div className={cn(
-                      "absolute top-2 right-2 text-[8px] font-bold px-1 py-0.5 rounded",
-                      revenueChange >= 0 ? "text-emerald-500 bg-emerald-500/10" : "text-red-500 bg-red-500/10"
-                    )}>
-                      {revenueChange >= 0 ? '+' : ''}{revenueChange.toFixed(0)}%
-                    </div>
+                    <div className="absolute top-2 right-2 text-[8px] font-bold text-emerald-500 bg-emerald-500/10 px-1 py-0.5 rounded">+18%</div>
                   </div>
                   <div className="relative group">
                     <MetricCard 
@@ -967,7 +859,7 @@ export default function App() {
                 </div>
 
                 {/* Evolution Chart */}
-                <EvolutionChart data={chartData} percentage={revenueChange} />
+                <EvolutionChart data={chartData} />
               </motion.div>
             )}
 
@@ -2171,18 +2063,13 @@ function SidebarItem({ icon, label, active, onClick }: { icon: React.ReactNode, 
   );
 }
 
-function EvolutionChart({ data, percentage }: { data: any[], percentage: number }) {
+function EvolutionChart({ data }: { data: any[] }) {
   return (
     <div className="saas-card p-4 h-64 w-full">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-xs font-black text-neutral-500 uppercase tracking-widest">Desempenho Semanal</h3>
-          <p className={cn(
-            "text-[10px] font-bold mt-0.5",
-            percentage >= 0 ? "text-emerald-500" : "text-red-500"
-          )}>
-            {percentage >= 0 ? '+' : ''}{percentage.toFixed(0)}% em relação à semana passada
-          </p>
+          <p className="text-[10px] text-emerald-500 font-bold mt-0.5">+12% em relação à semana passada</p>
         </div>
         <div className="flex gap-4 text-[9px] font-bold uppercase tracking-tighter">
           <span className="flex items-center gap-1 text-emerald-500"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Faturamento</span>
