@@ -55,7 +55,7 @@ import { format, isToday, parseISO, differenceInDays, subDays, isSameDay, eachDa
 import { ptBR } from 'date-fns/locale';
 import { Toaster, toast } from 'sonner';
 import { cn } from './lib/utils';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from './lib/supabase';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
@@ -315,7 +315,7 @@ export default function App() {
   // Clientes recuperados são aqueles que fecharam agendamento E já estavam na nossa base prévia de clientes.
   const allRecoveredAppointments = useMemo(() => appointments.filter(a => 
     a.status === 'completed' && 
-    clients.some(c => c.phone.replace(/\D/g, '') === a.client_phone.replace(/\D/g, ''))
+    clients.some(c => (c.phone || '').replace(/\D/g, '') === (a.client_phone || '').replace(/\D/g, ''))
   ), [appointments, clients]);
 
   const recoveredAppointments = useMemo(() => {
@@ -387,17 +387,22 @@ export default function App() {
   }, []);
 
   const revenueChange = useMemo(() => {
-    const lastWeekRevenue = appointments.filter(a => {
-      try {
-        const d = parseISO(a.date);
-        return a.status === 'completed' && !isNaN(d.getTime()) && isWithinInterval(d, lastWeekRange);
-      } catch {
-        return false;
-      }
-    }).reduce((acc, curr) => acc + (Number(curr.service_price) || 0), 0);
-    
-    if (lastWeekRevenue === 0) return projectedRevenue > 0 ? 100 : 0;
-    return ((projectedRevenue - lastWeekRevenue) / lastWeekRevenue) * 100;
+    try {
+      const lastWeekRevenue = appointments.filter(a => {
+        try {
+          const d = parseISO(a.date);
+          return a.status === 'completed' && !isNaN(d.getTime()) && isWithinInterval(d, lastWeekRange);
+        } catch {
+          return false;
+        }
+      }).reduce((acc, curr) => acc + (Number(curr.service_price) || 0), 0);
+      
+      if (lastWeekRevenue === 0) return projectedRevenue > 0 ? 100 : 0;
+      const change = ((projectedRevenue - lastWeekRevenue) / lastWeekRevenue) * 100;
+      return isNaN(change) ? 0 : change;
+    } catch {
+      return 0;
+    }
   }, [appointments, projectedRevenue, lastWeekRange]);
 
   if (view === 'booking') {
