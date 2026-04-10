@@ -137,6 +137,7 @@ const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLI
 // --- Main App ---
 
 export default function App() {
+  console.log('📦 App component: rendering start');
   const [view, setView] = useState<'dashboard' | 'clients' | 'agenda' | 'settings' | 'booking' | 'pricing' | 'checkout' | 'onboarding'>('dashboard');
   const [services, setServices] = useState<Service[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -312,23 +313,37 @@ export default function App() {
     }
   }).length;
   
+  console.log('📊 App component: calculating metrics', { appointments: appointments.length, clients: clients.length });
+
   // Clientes recuperados são aqueles que fecharam agendamento E já estavam na nossa base prévia de clientes.
-  const allRecoveredAppointments = useMemo(() => appointments.filter(a => 
-    a.status === 'completed' && 
-    clients.some(c => (c.phone || '').replace(/\D/g, '') === (a.client_phone || '').replace(/\D/g, ''))
-  ), [appointments, clients]);
+  const allRecoveredAppointments = useMemo(() => {
+    try {
+      return appointments.filter(a => 
+        a.status === 'completed' && 
+        clients.some(c => (c.phone || '').replace(/\D/g, '') === (a.client_phone || '').replace(/\D/g, ''))
+      );
+    } catch (e) {
+      console.error('❌ Error in allRecoveredAppointments:', e);
+      return [];
+    }
+  }, [appointments, clients]);
 
   const recoveredAppointments = useMemo(() => {
-    const end = startOfDay(new Date());
-    const start = subDays(end, 6);
-    return allRecoveredAppointments.filter(a => {
-      try {
-        const d = parseISO(a.date);
-        return !isNaN(d.getTime()) && isWithinInterval(d, { start, end });
-      } catch {
-        return false;
-      }
-    });
+    try {
+      const end = startOfDay(new Date());
+      const start = subDays(end, 6);
+      return allRecoveredAppointments.filter(a => {
+        try {
+          const d = parseISO(a.date);
+          return !isNaN(d.getTime()) && isWithinInterval(d, { start, end });
+        } catch {
+          return false;
+        }
+      });
+    } catch (e) {
+      console.error('❌ Error in recoveredAppointments:', e);
+      return [];
+    }
   }, [allRecoveredAppointments]);
 
   const recoveredThisWeek = recoveredAppointments.length;
