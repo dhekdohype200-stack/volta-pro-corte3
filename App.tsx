@@ -205,28 +205,6 @@ export default function App() {
     prevAppointmentsCount.current = appointments.length;
   }, [appointments]);
 
-  const last7Days = useMemo(() => {
-    const end = startOfDay(new Date());
-    const start = subDays(end, 6);
-    return eachDayOfInterval({ start, end });
-  }, []);
-
-  const chartData = useMemo(() => {
-    return last7Days.map(day => {
-      const dayAppointments = appointments.filter(a => 
-        a.status === 'completed' && isSameDay(parseISO(a.date), day)
-      );
-      const dayRecovered = recoveredAppointments.filter(a => 
-        isSameDay(parseISO(a.date), day)
-      );
-      
-      return {
-        name: format(day, 'EEE', { locale: ptBR }).replace('.', ''),
-        revenue: dayAppointments.reduce((acc, curr) => acc + curr.service_price, 0),
-        recovered: dayRecovered.length
-      };
-    });
-  }, [appointments, recoveredAppointments, last7Days]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -316,9 +294,23 @@ export default function App() {
   };
 
   const totalRecoverable = inactiveClients.reduce((acc, curr) => acc + curr.avg_price, 0);
-  const todayAppointments = appointments.filter(a => isToday(parseISO(a.date)));
+  const todayAppointments = appointments.filter(a => {
+    try {
+      const d = parseISO(a.date);
+      return !isNaN(d.getTime()) && isToday(d);
+    } catch {
+      return false;
+    }
+  });
   const emptySlots = 10 - todayAppointments.length;
-  const newClientsToday = appointments.filter(a => isToday(parseISO(a.created_at || a.date))).length;
+  const newClientsToday = appointments.filter(a => {
+    try {
+      const d = parseISO(a.created_at || a.date);
+      return !isNaN(d.getTime()) && isToday(d);
+    } catch {
+      return false;
+    }
+  }).length;
   
   // Clientes recuperados são aqueles que fecharam agendamento E já estavam na nossa base prévia de clientes.
   const allRecoveredAppointments = useMemo(() => appointments.filter(a => 
@@ -329,21 +321,64 @@ export default function App() {
   const recoveredAppointments = useMemo(() => {
     const end = startOfDay(new Date());
     const start = subDays(end, 6);
-    return allRecoveredAppointments.filter(a => 
-      isWithinInterval(parseISO(a.date), { start, end })
-    );
+    return allRecoveredAppointments.filter(a => {
+      try {
+        const d = parseISO(a.date);
+        return !isNaN(d.getTime()) && isWithinInterval(d, { start, end });
+      } catch {
+        return false;
+      }
+    });
   }, [allRecoveredAppointments]);
 
   const recoveredThisWeek = recoveredAppointments.length;
-  const recoveredRevenue = recoveredAppointments.reduce((acc, curr) => acc + curr.service_price, 0);
+  const recoveredRevenue = recoveredAppointments.reduce((acc, curr) => acc + (Number(curr.service_price) || 0), 0);
 
   const projectedRevenue = useMemo(() => {
     const end = startOfDay(new Date());
     const start = subDays(end, 6);
-    return appointments.filter(a => 
-      a.status === 'completed' && isWithinInterval(parseISO(a.date), { start, end })
-    ).reduce((acc, curr) => acc + curr.service_price, 0);
+    return appointments.filter(a => {
+      try {
+        const d = parseISO(a.date);
+        return a.status === 'completed' && !isNaN(d.getTime()) && isWithinInterval(d, { start, end });
+      } catch {
+        return false;
+      }
+    }).reduce((acc, curr) => acc + (Number(curr.service_price) || 0), 0);
   }, [appointments]);
+
+  const last7Days = useMemo(() => {
+    const end = startOfDay(new Date());
+    const start = subDays(end, 6);
+    return eachDayOfInterval({ start, end });
+  }, []);
+
+  const chartData = useMemo(() => {
+    return last7Days.map(day => {
+      const dayAppointments = appointments.filter(a => {
+        try {
+          const d = parseISO(a.date);
+          return a.status === 'completed' && !isNaN(d.getTime()) && isSameDay(d, day);
+        } catch {
+          return false;
+        }
+      });
+      const dayRecovered = recoveredAppointments.filter(a => {
+        try {
+          const d = parseISO(a.date);
+          return !isNaN(d.getTime()) && isSameDay(d, day);
+        } catch {
+          return false;
+        }
+      });
+      
+      return {
+        name: format(day, 'EEE', { locale: ptBR }).replace('.', ''),
+        revenue: dayAppointments.reduce((acc, curr) => acc + (Number(curr.service_price) || 0), 0),
+        recovered: dayRecovered.length
+      };
+    });
+  }, [appointments, recoveredAppointments, last7Days]);
 
   const lastWeekRange = useMemo(() => {
     const end = subDays(startOfDay(new Date()), 7);
@@ -352,9 +387,14 @@ export default function App() {
   }, []);
 
   const revenueChange = useMemo(() => {
-    const lastWeekRevenue = appointments.filter(a => 
-      a.status === 'completed' && isWithinInterval(parseISO(a.date), lastWeekRange)
-    ).reduce((acc, curr) => acc + curr.service_price, 0);
+    const lastWeekRevenue = appointments.filter(a => {
+      try {
+        const d = parseISO(a.date);
+        return a.status === 'completed' && !isNaN(d.getTime()) && isWithinInterval(d, lastWeekRange);
+      } catch {
+        return false;
+      }
+    }).reduce((acc, curr) => acc + (Number(curr.service_price) || 0), 0);
     
     if (lastWeekRevenue === 0) return projectedRevenue > 0 ? 100 : 0;
     return ((projectedRevenue - lastWeekRevenue) / lastWeekRevenue) * 100;
